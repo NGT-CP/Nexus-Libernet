@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Nexus Library",
-  description: "Created by Cheris @2026",
+  description: "Attendance Controlled Infrastructure Authentication",
 };
 
 export default function RootLayout({
