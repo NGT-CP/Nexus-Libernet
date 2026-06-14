@@ -1,37 +1,93 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { LogOut, ShieldAlert } from 'lucide-react';
-import { logoutAction } from '@/app/actions/auth';
+import AdminDashboardClient from './AdminClient';
 
-export default async function AdminPage() {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+type Props = {
+  searchParams: Promise<{ tab?: string }>;
+};
 
-    // Double verification: Must be logged in AND have the admin role
-    if (!user || user.user_metadata?.role !== 'admin') {
-        redirect('/');
-    }
+export default async function AdminPage({ searchParams }: Props) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-    return (
-        <main className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 space-y-6">
+  if (!user || user.user_metadata?.role !== 'admin') {
+    redirect('/');
+  }
 
-            <div className="bg-zinc-900/60 border border-emerald-900/30 rounded-2xl p-8 backdrop-blur-xl flex flex-col items-center text-center space-y-4 shadow-2xl shadow-emerald-900/10">
-                <ShieldAlert className="w-12 h-12 text-emerald-500" />
+  // ==========================================
+  // 1. FETCH LIVE CONNECTIONS (Devices Table)
+  // ==========================================
+  const { data: rawDevices, error: devError } = await supabase
+    .from('devices')
+    .select(`
+      mac_address,
+      ip_address,
+      device_name,
+      status,
+      speed_limit,
+      students ( name )
+    `);
 
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-50 tracking-tight">Admin Portal</h1>
-                    <p className="text-sm text-zinc-400 mt-1">System Administrator: <span className="text-emerald-400">{user.email}</span></p>
-                </div>
+  if (devError) console.error("Database Error (Devices):", devError);
 
-                {/* Server Action Logout Form */}
-                <form action={logoutAction} className="pt-4 w-full">
-                    <button type="submit" className="w-full flex items-center justify-center space-x-2 bg-zinc-950 hover:bg-rose-950/40 border border-zinc-800 hover:border-rose-900/50 text-zinc-400 hover:text-rose-400 px-4 py-3 rounded-lg transition-all duration-200">
-                        <LogOut className="w-4 h-4" />
-                        <span className="text-sm font-medium">Terminate Session</span>
-                    </button>
-                </form>
-            </div>
+  // FIX 1 & 2: Explicitly type as any[] to satisfy the Client Component, 
+  // and handle the Supabase object/array join ambiguity.
+  const mappedDevices: any[] = (rawDevices as any[])?.map((d) => {
+    const [down, up] = (d.speed_limit || '5M/5M').split('/'); 
+    
+    // Safely extract the student name whether Supabase returns an array or an object
+    const studentData = Array.isArray(d.students) ? d.students[0] : d.students;
+    
+    return {
+      mac: d.mac_address,
+      hostname: d.device_name || 'Unknown Device',
+      ip: String(d.ip_address || 'N/A'),
+      status: d.status || 'pending',
+      user: studentData?.name || 'Unassigned',
+      down: down || '5M',
+      up: up || '5M'
+    };
+  }) || [];
 
-        </main>
-    );
+  // ==========================================
+  // 2. FETCH REGISTERED USERS (Students Table)
+  // ==========================================
+  const { data: rawStudents, error: stuError } = await supabase
+    .from('students')
+    .select(`
+      id,
+      name,
+      devices ( device_name, status ),
+      subscriptions ( status, started_at, expires_at )
+    `);
+
+  if (stuError) console.error("Database Error (Students):", stuError);
+
+  // Apply the same strict any[] typing here
+  const mappedUsers: any[] = (rawStudents as any[])?.map((s) => {
+    
+    const subsArray = Array.isArray(s.subscriptions) ? s.subscriptions : [];
+    const activeSub = subsArray.find((sub: any) => sub.status === 'ACTIVE');
+
+    const devicesArray = Array.isArray(s.devices) ? s.devices : [s.devices].filter(Boolean);
+    const formattedDevices = devicesArray.map((d: any) => ({
+      hostname: d.device_name || 'Unknown Hardware',
+      status: d.status === 'bypassed' ? 'online' : 'offline'
+    }));
+
+    return {
+      id: `STU-${s.id}`,
+      name: s.name,
+      devices: formattedDevices,
+      active_devices: formattedDevices.filter((d: any) => d.status === 'online').length,
+      offline_devices: formattedDevices.filter((d: any) => d.status === 'offline').length,
+      sub_start: activeSub?.started_at ? new Date(activeSub.started_at).toLocaleDateString() : 'None',
+      sub_end: activeSub?.expires_at ? new Date(activeSub.expires_at).toLocaleDateString() : 'None'
+    };
+  }) || [];
+
+  // Cast to any to satisfy mismatched prop typings between server and client component
+  return (
+    <AdminDashboardClient {...({ adminUser: user, initialDevices: mappedDevices, initialUsers: mappedUsers } as any)} />
+  );
 }

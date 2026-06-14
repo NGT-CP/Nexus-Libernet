@@ -23,23 +23,81 @@ export async function middleware(request: NextRequest) {
         }
     );
 
-    // Ping the server to cryptographically verify the HttpOnly cookie
     const { data: { user } } = await supabase.auth.getUser();
 
-    const isProtectedRoute = request.nextUrl.pathname.startsWith('/dashboard') || request.nextUrl.pathname.startsWith('/admin');
+    const path = request.nextUrl.pathname;
+    const isProtectedRoute = path.startsWith('/dashboard') || path.startsWith('/admin');
 
-    // If a user with no valid cookie tries to access a protected route, bounce them.
+    // =======================================================================
+    // RULE 1: THE UN-AUTHENTICATED CHECK
+    // =======================================================================
     if (isProtectedRoute && !user) {
         const url = request.nextUrl.clone();
         url.pathname = '/';
-        return NextResponse.redirect(url);
+        const redirectResponse = NextResponse.redirect(url);
+
+        supabaseResponse.cookies.getAll().forEach((cookie) => {
+            redirectResponse.cookies.set(cookie.name, cookie.value, {
+                domain: cookie.domain, expires: cookie.expires, httpOnly: cookie.httpOnly,
+                maxAge: cookie.maxAge, path: cookie.path, sameSite: cookie.sameSite, secure: cookie.secure,
+            });
+        });
+        return redirectResponse;
     }
 
-    // If a logged-in user visits the login page, push them back to their dashboard.
-    if (request.nextUrl.pathname === '/' && user) {
+    // =======================================================================
+    // RULE 2: THE ALREADY LOGGED IN CHECK (Routing from root)
+    // =======================================================================
+    if (path === '/' && user) {
         const url = request.nextUrl.clone();
         url.pathname = user.user_metadata?.role === 'admin' ? '/admin' : '/dashboard';
-        return NextResponse.redirect(url);
+        const redirectResponse = NextResponse.redirect(url);
+
+        supabaseResponse.cookies.getAll().forEach((cookie) => {
+            redirectResponse.cookies.set(cookie.name, cookie.value, {
+                domain: cookie.domain, expires: cookie.expires, httpOnly: cookie.httpOnly,
+                maxAge: cookie.maxAge, path: cookie.path, sameSite: cookie.sameSite, secure: cookie.secure,
+            });
+        });
+        return redirectResponse;
+    }
+
+    // =======================================================================
+    // RULE 3: STRICT BOUNDARY ENFORCEMENT (The Fix)
+    // Prevent Admins from typing /dashboard and Students from typing /admin
+    // =======================================================================
+    if (user) {
+        const userRole = user.user_metadata?.role;
+
+        // A. If an Admin tries to manually navigate to the Student Dashboard
+        if (path.startsWith('/dashboard') && userRole === 'admin') {
+            const url = request.nextUrl.clone();
+            url.pathname = '/admin'; // Force them back to the admin portal
+            const redirectResponse = NextResponse.redirect(url);
+
+            supabaseResponse.cookies.getAll().forEach((cookie) => {
+                redirectResponse.cookies.set(cookie.name, cookie.value, {
+                    domain: cookie.domain, expires: cookie.expires, httpOnly: cookie.httpOnly,
+                    maxAge: cookie.maxAge, path: cookie.path, sameSite: cookie.sameSite, secure: cookie.secure,
+                });
+            });
+            return redirectResponse;
+        }
+
+        // B. If a Student tries to manually navigate to the Admin Portal
+        if (path.startsWith('/admin') && userRole !== 'admin') {
+            const url = request.nextUrl.clone();
+            url.pathname = '/dashboard'; // Force them back to the student dashboard
+            const redirectResponse = NextResponse.redirect(url);
+
+            supabaseResponse.cookies.getAll().forEach((cookie) => {
+                redirectResponse.cookies.set(cookie.name, cookie.value, {
+                    domain: cookie.domain, expires: cookie.expires, httpOnly: cookie.httpOnly,
+                    maxAge: cookie.maxAge, path: cookie.path, sameSite: cookie.sameSite, secure: cookie.secure,
+                });
+            });
+            return redirectResponse;
+        }
     }
 
     return supabaseResponse;
