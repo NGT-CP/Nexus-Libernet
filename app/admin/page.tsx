@@ -1,43 +1,31 @@
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import AdminDashboardClient from './AdminClient';
+import { getNetworkGraphData } from '@/app/actions/telemetry';
 
-type Props = {
-  searchParams: Promise<{ tab?: string }>;
-};
+export const dynamic = 'force-dynamic';
+
+type Props = { searchParams: Promise<{ tab?: string }> };
 
 export default async function AdminPage({ searchParams }: Props) {
-  const supabase = await createClient();
+  // Use the high-privilege admin client to read across RLS boundaries
+  const supabase = await createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user || user.user_metadata?.role !== 'admin') {
     redirect('/');
   }
 
-  // ==========================================
-  // 1. FETCH LIVE CONNECTIONS (Devices Table)
-  // ==========================================
+  // 1. Fetch Devices (Bypassing RLS)
   const { data: rawDevices, error: devError } = await supabase
     .from('devices')
-    .select(`
-      mac_address,
-      ip_address,
-      device_name,
-      status,
-      speed_limit,
-      students ( name )
-    `);
+    .select(`mac_address, ip_address, device_name, status, speed_limit, students ( name )`);
 
-  if (devError) console.error("Database Error (Devices):", devError);
+  if (devError) console.error("Admin Fetch Error (devices):", devError);
 
-  // FIX 1 & 2: Explicitly type as any[] to satisfy the Client Component, 
-  // and handle the Supabase object/array join ambiguity.
   const mappedDevices: any[] = (rawDevices as any[])?.map((d) => {
-    const [down, up] = (d.speed_limit || '5M/5M').split('/'); 
-    
-    // Safely extract the student name whether Supabase returns an array or an object
+    const [down, up] = (d.speed_limit || '5M/5M').split('/');
     const studentData = Array.isArray(d.students) ? d.students[0] : d.students;
-    
     return {
       mac: d.mac_address,
       hostname: d.device_name || 'Unknown Device',
@@ -49,24 +37,16 @@ export default async function AdminPage({ searchParams }: Props) {
     };
   }) || [];
 
-  // ==========================================
-  // 2. FETCH REGISTERED USERS (Students Table)
-  // ==========================================
+  // 2. Fetch Users & Relational Joins (Bypassing RLS)
   const { data: rawStudents, error: stuError } = await supabase
     .from('students')
-    .select(`
-      id,
-      name,
-      devices ( device_name, status ),
-      subscriptions ( status, started_at, expires_at )
-    `);
+    .select(`id, name, devices ( device_name, status ), subscriptions ( status, started_at, expires_at )`);
 
-  if (stuError) console.error("Database Error (Students):", stuError);
+  if (stuError) console.error("Admin Fetch Error (students):", stuError);
 
-  // Apply the same strict any[] typing here
   const mappedUsers: any[] = (rawStudents as any[])?.map((s) => {
-    
     const subsArray = Array.isArray(s.subscriptions) ? s.subscriptions : [];
+    // Identify the true current active pass
     const activeSub = subsArray.find((sub: any) => sub.status === 'ACTIVE');
 
     const devicesArray = Array.isArray(s.devices) ? s.devices : [s.devices].filter(Boolean);
@@ -86,8 +66,17 @@ export default async function AdminPage({ searchParams }: Props) {
     };
   }) || [];
 
-  // Cast to any to satisfy mismatched prop typings between server and client component
+  // 3. Fetch Graph Time-Series Data
+  const graphData = await getNetworkGraphData();
+  console.log("--- DEBUG: DATABASE USERS ---", mappedUsers.length);
+  console.log("--- DEBUG: GRAPH ROWS ---", graphData);
+
   return (
-    <AdminDashboardClient {...({ adminUser: user, initialDevices: mappedDevices, initialUsers: mappedUsers } as any)} />
+    <AdminDashboardClient
+      adminUser={user}
+      initialDevices={mappedDevices}
+      initialUsers={mappedUsers}
+      graphData={graphData}
+    />
   );
 }

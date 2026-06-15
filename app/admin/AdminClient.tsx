@@ -7,16 +7,28 @@ import {
 } from 'lucide-react';
 import { logoutAction } from '@/app/actions/auth';
 import { updateAdminProfile, updateDeviceSpeedLimit } from '@/app/actions/admin';
+import { useRouter } from 'next/navigation';
+import DataUsageChart from '@/components/DataUsageChart';
 
 export default function AdminDashboardClient({
     adminUser,
     initialDevices,
-    initialUsers
+    initialUsers,
+    graphData // <-- 1. Add it to the extracted variables here
 }: {
     adminUser: any;
     initialDevices: any[];
     initialUsers: any[];
+    graphData: any[]; // <-- 2. Add the strict TypeScript definition here!
 }) {
+    const router = useRouter();
+
+    // ==========================================
+    // STATE HOOKS
+    // ==========================================
+    // Subscription Modal State
+    const [subModal, setSubModal] = useState<{ isOpen: boolean, userId: string, userName: string, subStart: string, subEnd: string } | null>(null);
+    const [subType, setSubType] = useState<'TRIAL' | 'CASH'>('TRIAL');
 
     // UI State
     const [activeTab, setActiveTab] = useState('overview');
@@ -98,8 +110,8 @@ export default function AdminDashboardClient({
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
                                     className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${isActive
-                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-inner'
-                                            : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-slate-200 border border-transparent'
+                                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-inner'
+                                        : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-slate-200 border border-transparent'
                                         }`}
                                 >
                                     <Icon className="w-4 h-4" />
@@ -130,18 +142,23 @@ export default function AdminDashboardClient({
                         {activeTab === 'overview' && (
                             <div className="animate-in fade-in">
                                 <h2 className="text-xl font-bold text-slate-50 mb-6 border-b border-zinc-800 pb-4">Network Telemetry</h2>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                                     <div className="p-6 bg-zinc-950/50 border border-zinc-800/80 rounded-xl">
                                         <p className="text-sm text-zinc-400 uppercase tracking-wider font-semibold">Total Users</p>
-                                        {/* Dynamically count users from the database */}
                                         <p className="text-4xl font-bold mt-2 text-slate-50">{initialUsers.length}</p>
                                     </div>
                                     <div className="p-6 bg-zinc-950/50 border border-zinc-800/80 rounded-xl">
                                         <p className="text-sm text-zinc-400 uppercase tracking-wider font-semibold">Total Devices</p>
-                                        {/* Dynamically count devices from the database */}
                                         <p className="text-4xl font-bold mt-2 text-emerald-400">{initialDevices.length}</p>
                                     </div>
                                 </div>
+
+                                {/* ========================================== */}
+                                {/* THE GRAPH INJECTION POINT */}
+                                {/* ========================================== */}
+                                <DataUsageChart data={graphData} />
+
                             </div>
                         )}
 
@@ -166,7 +183,6 @@ export default function AdminDashboardClient({
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-zinc-800/50">
-                                            {/* NOW USING REAL DATABASE DEVICES */}
                                             {initialDevices.map((conn) => (
                                                 <Fragment key={conn.mac}>
                                                     <tr className={`transition-colors ${expandedMac === conn.mac ? 'bg-sky-900/10' : 'hover:bg-zinc-800/20'}`}>
@@ -273,7 +289,6 @@ export default function AdminDashboardClient({
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-zinc-800/50">
-                                            {/* NOW USING REAL DATABASE USERS */}
                                             {initialUsers.map((u, i) => (
                                                 <tr key={u.id} className="hover:bg-zinc-800/20 transition-colors">
                                                     <td className="px-4 py-3">
@@ -307,7 +322,18 @@ export default function AdminDashboardClient({
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-3 text-right space-x-4">
-                                                        <button className="text-emerald-500 hover:text-emerald-400 text-xs font-medium inline-flex items-center"><Plus className="w-3 h-3 mr-1" /> Sub</button>
+                                                        <button
+                                                            onClick={() => setSubModal({
+                                                                isOpen: true,
+                                                                userId: u.id,
+                                                                userName: u.name,
+                                                                subStart: u.sub_start,
+                                                                subEnd: u.sub_end
+                                                            })}
+                                                            className="text-emerald-500 hover:text-emerald-400 text-xs font-medium inline-flex items-center transition-colors"
+                                                        >
+                                                            <Plus className="w-3 h-3 mr-1" /> Sub
+                                                        </button>
                                                         <button className="text-sky-500 hover:text-sky-400 text-xs font-medium inline-flex items-center"><Edit className="w-3 h-3 mr-1" /> Edit</button>
                                                     </td>
                                                 </tr>
@@ -424,6 +450,121 @@ export default function AdminDashboardClient({
 
                             <button disabled={loading} type="submit" className="w-full bg-zinc-100 hover:bg-white text-zinc-950 font-semibold rounded-lg py-2.5 text-sm transition-colors flex justify-center mt-2">
                                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update Credentials'}
+                            </button>
+                        </form>
+
+                    </div>
+                </div>
+            )}
+
+            {/* SUBSCRIPTION MODAL */}
+            {subModal?.isOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setSubModal(null)} />
+                    <div className="relative w-full max-w-md bg-zinc-900 border border-zinc-700 rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95">
+
+                        <button onClick={() => setSubModal(null)} className="absolute top-4 right-4 text-zinc-400 hover:text-slate-200 transition-colors">
+                            <X className="w-5 h-5" />
+                        </button>
+
+                        <div className="mb-6">
+                            <h2 className="text-lg font-bold text-slate-50">Grant Subscription</h2>
+                            <p className="text-xs text-zinc-400 mb-4">Target User: <span className="text-sky-400 font-medium">{subModal.userName}</span></p>
+
+                            {/* Current Subscription Status Card */}
+                            <div className={`p-3 rounded-lg border ${subModal.subStart !== 'None' ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-zinc-800/40 border-zinc-700/50'}`}>
+                                <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 mb-1.5">Current Status</p>
+                                {subModal.subStart !== 'None' ? (
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-emerald-400 font-medium flex items-center">
+                                            <Activity className="w-3 h-3 mr-1.5" /> Active Pass
+                                        </span>
+                                        <span className="text-zinc-300">Exp: {subModal.subEnd}</span>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center text-xs text-zinc-500 italic">
+                                        <ShieldAlert className="w-3 h-3 mr-1.5 text-zinc-600" /> No active subscription
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Type Selector Tabs */}
+                        <div className="flex space-x-2 mb-6 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+                            <button
+                                onClick={() => setSubType('TRIAL')}
+                                className={`flex-1 py-2 text-xs font-bold rounded-md transition-all uppercase tracking-wider ${subType === 'TRIAL' ? 'bg-zinc-800 text-slate-50 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+                            >
+                                Free Trial
+                            </button>
+                            <button
+                                onClick={() => setSubType('CASH')}
+                                className={`flex-1 py-2 text-xs font-bold rounded-md transition-all uppercase tracking-wider ${subType === 'CASH' ? 'bg-emerald-600/20 text-emerald-400 shadow-sm border border-emerald-500/30' : 'text-zinc-500 hover:text-zinc-300'}`}
+                            >
+                                Cash Payment
+                            </button>
+                        </div>
+
+                        {/* Server Action Form */}
+                        <form action={async (formData) => {
+                            setLoading(true);
+                            setMsg({ type: '', text: '' });
+
+                            const { addSubscription } = await import('@/app/actions/admin');
+                            const res = await addSubscription(formData);
+
+                            if (res?.error) {
+                                setMsg({ type: 'error', text: res.error });
+                            } else {
+                                setMsg({ type: 'success', text: `Success! Receipt: ${res?.receipt}` });
+
+                                // FORCE THE UI TO REFRESH INSTANTLY
+                                router.refresh();
+
+                                setTimeout(() => setSubModal(null), 2000);
+                            }
+                            setLoading(false);
+                        }} className="space-y-4">
+
+                            {/* Hidden Inputs to pass state to the server */}
+                            <input type="hidden" name="studentId" value={subModal.userId} />
+                            <input type="hidden" name="subType" value={subType} />
+
+                            {/* Dynamic Input based on selection */}
+                            {subType === 'TRIAL' ? (
+                                <div className="space-y-1.5 animate-in fade-in slide-in-from-left-2">
+                                    <label className="text-xs font-semibold text-zinc-400 uppercase">Duration (Days)</label>
+                                    <input
+                                        type="number"
+                                        name="days"
+                                        defaultValue="7"
+                                        min="1"
+                                        className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50"
+                                    />
+                                    <p className="text-[10px] text-zinc-500">Generates a trial pass from today.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-1.5 animate-in fade-in slide-in-from-right-2">
+                                    <label className="text-xs font-semibold text-emerald-400/80 uppercase">Amount Collected (₹)</label>
+                                    <input
+                                        type="number"
+                                        name="amount"
+                                        placeholder="e.g. 500"
+                                        min="1"
+                                        className="w-full bg-black/40 border border-emerald-900/50 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50"
+                                    />
+                                    <p className="text-[10px] text-emerald-500/60">Automatically provisions a 1-month active pass.</p>
+                                </div>
+                            )}
+
+                            {msg.text && (
+                                <div className={`p-3 rounded-lg text-xs font-medium border ${msg.type === 'error' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}>
+                                    {msg.text}
+                                </div>
+                            )}
+
+                            <button disabled={loading} type="submit" className={`w-full font-semibold rounded-lg py-2.5 text-sm transition-colors flex justify-center mt-4 ${subType === 'CASH' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-zinc-100 hover:bg-white text-zinc-950'}`}>
+                                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : subType === 'CASH' ? 'Register Payment' : 'Activate Free Trial'}
                             </button>
                         </form>
 
