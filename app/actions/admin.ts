@@ -13,9 +13,7 @@ export async function updateAdminProfile(formData: FormData) {
     if (email) updates.email = email;
     if (password) updates.password = password;
 
-    if (Object.keys(updates).length === 0) {
-        return { error: 'No changes provided.' };
-    }
+    if (Object.keys(updates).length === 0) return { error: 'No changes provided.' };
 
     const { error } = await supabase.auth.updateUser(updates);
     if (error) return { error: error.message };
@@ -28,24 +26,16 @@ export async function updateDeviceSpeedLimit(macAddress: string, download: strin
     const supabase = await createAdminClient();
     const formattedSpeedLimit = `${download}/${upload}`;
 
-    const { error } = await supabase
-        .from('devices')
-        .update({ speed_limit: formattedSpeedLimit })
-        .eq('mac_address', macAddress);
+    const { error } = await supabase.from('devices').update({ speed_limit: formattedSpeedLimit }).eq('mac_address', macAddress);
 
-    if (error) {
-        console.error("Failed to update speed limit:", error);
-        return { error: error.message };
-    }
-
+    if (error) return { error: error.message };
     revalidatePath('/admin');
     return { success: true };
 }
 
-// Provision Active Student Passes (Clears overlapping subscriptions first)
+// Provision Active Student Passes
 export async function addSubscription(formData: FormData) {
     const supabase = await createAdminClient();
-
     const rawId = formData.get('studentId') as string;
     const studentId = parseInt(rawId.replace('STU-', ''));
     const subType = formData.get('subType') as string;
@@ -62,40 +52,79 @@ export async function addSubscription(formData: FormData) {
         if (!days || days <= 0) return { error: 'Please provide a valid number of days.' };
         expiresAt.setDate(now.getDate() + days);
         receiptNumber = `TRL-${Date.now()}`;
-    }
-    else if (subType === 'CASH') {
+    } else if (subType === 'CASH') {
         amount = parseFloat(formData.get('amount') as string);
         if (!amount || amount <= 0) return { error: 'Please provide a valid cash amount.' };
         expiresAt.setMonth(now.getMonth() + 1);
         receiptNumber = `CSH-${Date.now()}`;
-    }
-    else {
-        return { error: 'Invalid subscription method.' };
-    }
+    } else return { error: 'Invalid subscription method.' };
 
-    // Retract any old active rows to prevent layout stack duplication
-    await supabase
-        .from('subscriptions')
-        .update({ status: 'EXPIRED' })
-        .eq('student_id', studentId)
-        .eq('status', 'ACTIVE');
+    await supabase.from('subscriptions').update({ status: 'EXPIRED' }).eq('student_id', studentId).eq('status', 'ACTIVE');
 
-    // Write new authorization record directly to public tables
     const { error } = await supabase.from('subscriptions').insert({
-        student_id: studentId,
-        receipt_number: receiptNumber,
-        amount_paid: amount,
-        payment_method: subType,
-        status: 'ACTIVE',
-        started_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
+        student_id: studentId, receipt_number: receiptNumber, amount_paid: amount,
+        payment_method: subType, status: 'ACTIVE', started_at: now.toISOString(), expires_at: expiresAt.toISOString(),
+    });
+
+    if (error) return { error: error.message };
+    revalidatePath('/admin');
+    return { success: true, receipt: receiptNumber };
+}
+
+// ==========================================
+// NEW: ADD STUDENT
+// ==========================================
+export async function addStudent(formData: FormData) {
+    const supabase = await createAdminClient();
+    const name = formData.get('name') as string;
+    const phone = formData.get('phone') as string;
+
+    // Optional Fields
+    const email = formData.get('email') as string || null;
+    const target_exam = formData.get('target_exam') as string || null;
+    const address = formData.get('address') as string || null;
+    const emergency_contact = formData.get('emergency_contact') as string || null;
+
+    if (!name || !phone) return { error: 'Name and Phone Number are required.' };
+
+    const { error } = await supabase.from('students').insert({
+        name, phone, email, target_exam, address, emergency_contact
     });
 
     if (error) {
-        console.error("Subscription Writing Error:", error);
+        if (error.code === '23505') return { error: 'A student with this phone or email already exists.' };
         return { error: error.message };
     }
 
     revalidatePath('/admin');
-    return { success: true, receipt: receiptNumber };
+    return { success: true };
+}
+
+// ==========================================
+// NEW: UPDATE STUDENT
+// ==========================================
+export async function updateStudent(formData: FormData) {
+    const supabase = await createAdminClient();
+    const id = parseInt(formData.get('id') as string);
+    const name = formData.get('name') as string;
+    const phone = formData.get('phone') as string;
+
+    const email = formData.get('email') as string || null;
+    const target_exam = formData.get('target_exam') as string || null;
+    const address = formData.get('address') as string || null;
+    const emergency_contact = formData.get('emergency_contact') as string || null;
+
+    if (!id || !name || !phone) return { error: 'ID, Name, and Phone are required.' };
+
+    const { error } = await supabase.from('students').update({
+        name, phone, email, target_exam, address, emergency_contact
+    }).eq('id', id);
+
+    if (error) {
+        if (error.code === '23505') return { error: 'Phone or Email already exists on another profile.' };
+        return { error: error.message };
+    }
+
+    revalidatePath('/admin');
+    return { success: true };
 }
