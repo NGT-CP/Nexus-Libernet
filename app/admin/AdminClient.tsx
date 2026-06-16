@@ -3,12 +3,13 @@
 import React, { useState, Fragment } from 'react';
 import {
     ShieldAlert, LogOut, Activity, Users, Network, Router,
-    Download, Upload, Plus, Edit, Settings2, UserCog, X, ChevronDown, Save, Loader2, UserPlus
+    Download, Upload, Plus, Edit, Settings2, UserCog, X, ChevronDown, Save, Loader2, UserPlus, CheckCircle2
 } from 'lucide-react';
 import { logoutAction } from '@/app/actions/auth';
 import { updateAdminProfile, updateDeviceSpeedLimit } from '@/app/actions/admin';
 import { useRouter } from 'next/navigation';
 import DataUsageChart from '@/components/DataUsageChart';
+import ModernCalendar from '@/components/ModernCalendar';
 
 export default function AdminDashboardClient({
     adminUser, initialDevices, initialUsers, graphData
@@ -17,16 +18,12 @@ export default function AdminDashboardClient({
 }) {
     const router = useRouter();
 
-    // ==========================================
-    // STATE HOOKS
-    // ==========================================
     const [activeTab, setActiveTab] = useState('overview');
-
-    // Modals
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [subModal, setSubModal] = useState<{ isOpen: boolean, userId: string, userName: string, subStart: string, subEnd: string } | null>(null);
     const [isAddUserOpen, setIsAddUserOpen] = useState(false);
     const [editUserModal, setEditUserModal] = useState<any | null>(null);
+    const [attModal, setAttModal] = useState<any | null>(null);
 
     const [subType, setSubType] = useState<'TRIAL' | 'CASH'>('TRIAL');
     const [expandedMac, setExpandedMac] = useState<string | null>(null);
@@ -242,6 +239,9 @@ export default function AdminDashboardClient({
                                                         <button onClick={() => { setMsg({ type: '', text: '' }); setEditUserModal(u.raw); }} className="text-sky-500 hover:text-sky-400 text-xs font-medium inline-flex items-center transition-colors">
                                                             <Edit className="w-3 h-3 mr-1" /> Edit
                                                         </button>
+                                                        <button onClick={() => { setMsg({ type: '', text: '' }); setAttModal({ userName: u.name, dates: u.attendance, subStart: u.sub_start, subEnd: u.sub_end }); }} className="text-emerald-500 hover:text-emerald-400 text-xs font-medium inline-flex items-center transition-colors">
+                                                            <CheckCircle2 className="w-3 h-3 mr-1" /> Att
+                                                        </button>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -337,14 +337,18 @@ export default function AdminDashboardClient({
                                     <input required type="text" name="phone" className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-zinc-400 uppercase">Email</label>
-                                    <input type="email" name="email" className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
+                                    <label className="text-xs font-semibold text-zinc-400 uppercase">Email *</label>
+                                    <input required type="email" name="email" className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-zinc-400 uppercase">Password *</label>
+                                    <input required type="text" name="password" className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-semibold text-zinc-400 uppercase">Target Exam</label>
-                                    <input type="text" name="target_exam" placeholder="e.g. UPSC, JEE" className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
+                                    <input type="text" name="target_exam" placeholder="e.g. UPSC, JEE, NEET" className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
                                 </div>
-                                <div className="space-y-1.5 col-span-2">
+                                <div className="space-y-1.5 col-span-1">
                                     <label className="text-xs font-semibold text-zinc-400 uppercase">Address</label>
                                     <input type="text" name="address" className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
                                 </div>
@@ -390,14 +394,18 @@ export default function AdminDashboardClient({
                                     <input required type="text" name="phone" defaultValue={editUserModal.phone} className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-zinc-400 uppercase">Email</label>
-                                    <input type="email" name="email" defaultValue={editUserModal.email || ''} className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
+                                    <label className="text-xs font-semibold text-zinc-400 uppercase">Email *</label>
+                                    <input required type="email" name="email" defaultValue={editUserModal.email || ''} className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-zinc-400 uppercase">Password *</label>
+                                    <input required type="text" name="password" defaultValue={editUserModal.password || ''} className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-semibold text-zinc-400 uppercase">Target Exam</label>
                                     <input type="text" name="target_exam" defaultValue={editUserModal.target_exam || ''} className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
                                 </div>
-                                <div className="space-y-1.5 col-span-2">
+                                <div className="space-y-1.5 col-span-1">
                                     <label className="text-xs font-semibold text-zinc-400 uppercase">Address</label>
                                     <input type="text" name="address" defaultValue={editUserModal.address || ''} className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
                                 </div>
@@ -464,6 +472,22 @@ export default function AdminDashboardClient({
                                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : subType === 'CASH' ? 'Register Payment' : 'Activate Free Trial'}
                             </button>
                         </form>
+                    </div>
+                </div>
+            )}
+            {/* ADMIN ATTENDANCE VIEWER MODAL */}
+            {attModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setAttModal(null)} />
+                    <div className="relative w-full max-w-lg bg-zinc-900 border border-zinc-700 rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95">
+                        <button onClick={() => setAttModal(null)} className="absolute top-4 right-4 text-zinc-400 hover:text-slate-200"><X className="w-5 h-5" /></button>
+                        <h2 className="text-lg font-bold text-slate-50 mb-6">Attendance Record: <span className="text-sky-400">{attModal.userName}</span></h2>
+
+                        <ModernCalendar
+                            attendanceDates={attModal.dates}
+                            subStart={attModal.subStart !== 'None' ? attModal.subStart : null}
+                            subEnd={attModal.subEnd !== 'None' ? attModal.subEnd : null}
+                        />
                     </div>
                 </div>
             )}

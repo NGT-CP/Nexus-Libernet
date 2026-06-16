@@ -24,9 +24,9 @@ export default async function AdminPage({ searchParams }: Props) {
     };
   }) || [];
 
-  // 2. Fetch Users (NOW PULLING ALL DB FIELDS FOR THE EDIT MODAL)
+  // 2. Fetch Users (Added 'password' to the query string)
   const { data: rawStudents } = await supabase.from('students')
-    .select(`id, name, phone, email, target_exam, address, emergency_contact, devices ( device_name, status ), subscriptions ( status, started_at, expires_at )`)
+    .select(`id, name, phone, email, password, target_exam, address, emergency_contact, devices ( device_name, status ), subscriptions ( status, started_at, expires_at ), attendance ( attendance_date )`)
     .order('created_at', { ascending: false });
 
   const mappedUsers: any[] = (rawStudents as any[])?.map((s) => {
@@ -37,13 +37,16 @@ export default async function AdminPage({ searchParams }: Props) {
       hostname: d.device_name || 'Unknown Hardware', status: d.status === 'bypassed' ? 'online' : 'offline'
     }));
 
+    const attendanceDates = s.attendance?.map((a: any) => a.attendance_date) || [];
+
     return {
       id: `STU-${s.id}`, name: s.name, devices: formattedDevices,
       active_devices: formattedDevices.filter((d: any) => d.status === 'online').length,
       offline_devices: formattedDevices.filter((d: any) => d.status === 'offline').length,
-      sub_start: activeSub?.started_at ? new Date(activeSub.started_at).toLocaleDateString() : 'None',
-      sub_end: activeSub?.expires_at ? new Date(activeSub.expires_at).toLocaleDateString() : 'None',
-      raw: s // Pass the raw database row down for the Edit Modal to read
+      sub_start: activeSub?.started_at ? activeSub.started_at.split('T')[0] : 'None',
+      sub_end: activeSub?.expires_at ? activeSub.expires_at.split('T')[0] : 'None',
+      attendance: attendanceDates,
+      raw: s
     };
   }) || [];
 

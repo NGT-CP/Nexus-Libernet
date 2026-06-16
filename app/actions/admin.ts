@@ -3,7 +3,6 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 
-// Update Admin Profile Credentials
 export async function updateAdminProfile(formData: FormData) {
     const supabase = await createAdminClient();
     const email = formData.get('email') as string;
@@ -21,7 +20,6 @@ export async function updateAdminProfile(formData: FormData) {
     return { success: true };
 }
 
-// Update Target Device Queues 
 export async function updateDeviceSpeedLimit(macAddress: string, download: string, upload: string) {
     const supabase = await createAdminClient();
     const formattedSpeedLimit = `${download}/${upload}`;
@@ -33,7 +31,6 @@ export async function updateDeviceSpeedLimit(macAddress: string, download: strin
     return { success: true };
 }
 
-// Provision Active Student Passes
 export async function addSubscription(formData: FormData) {
     const supabase = await createAdminClient();
     const rawId = formData.get('studentId') as string;
@@ -72,27 +69,40 @@ export async function addSubscription(formData: FormData) {
 }
 
 // ==========================================
-// NEW: ADD STUDENT
+// ADD STUDENT (Updated for Password & Auth)
 // ==========================================
 export async function addStudent(formData: FormData) {
     const supabase = await createAdminClient();
     const name = formData.get('name') as string;
     const phone = formData.get('phone') as string;
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
 
-    // Optional Fields
-    const email = formData.get('email') as string || null;
     const target_exam = formData.get('target_exam') as string || null;
     const address = formData.get('address') as string || null;
     const emergency_contact = formData.get('emergency_contact') as string || null;
 
-    if (!name || !phone) return { error: 'Name and Phone Number are required.' };
+    if (!name || !phone || !email || !password) {
+        return { error: 'Name, Phone, Email, and Password are all required.' };
+    }
 
+    // 1. Create the user in Supabase Authentication so they can log in
+    const { error: authError } = await supabase.auth.admin.createUser({
+        email: email,
+        password: password,
+        email_confirm: true,
+        user_metadata: { role: 'student', name: name }
+    });
+
+    if (authError) return { error: `Auth Error: ${authError.message}` };
+
+    // 2. Insert their profile into your public.students table
     const { error } = await supabase.from('students').insert({
-        name, phone, email, target_exam, address, emergency_contact
+        name, phone, email, password, target_exam, address, emergency_contact
     });
 
     if (error) {
-        if (error.code === '23505') return { error: 'A student with this phone or email already exists.' };
+        if (error.code === '23505') return { error: 'A student with this phone or email already exists in the database.' };
         return { error: error.message };
     }
 
@@ -101,23 +111,28 @@ export async function addStudent(formData: FormData) {
 }
 
 // ==========================================
-// NEW: UPDATE STUDENT
+// UPDATE STUDENT (Updated for Password)
 // ==========================================
 export async function updateStudent(formData: FormData) {
     const supabase = await createAdminClient();
     const id = parseInt(formData.get('id') as string);
     const name = formData.get('name') as string;
     const phone = formData.get('phone') as string;
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
 
-    const email = formData.get('email') as string || null;
     const target_exam = formData.get('target_exam') as string || null;
     const address = formData.get('address') as string || null;
     const emergency_contact = formData.get('emergency_contact') as string || null;
 
-    if (!id || !name || !phone) return { error: 'ID, Name, and Phone are required.' };
+    if (!id || !name || !phone || !email || !password) {
+        return { error: 'ID, Name, Phone, Email, and Password are required.' };
+    }
 
+    // Note: Updating a user's Auth password requires their Auth UUID, 
+    // but we will keep their table password updated per your schema.
     const { error } = await supabase.from('students').update({
-        name, phone, email, target_exam, address, emergency_contact
+        name, phone, email, password, target_exam, address, emergency_contact
     }).eq('id', id);
 
     if (error) {
