@@ -7,7 +7,6 @@ export async function markAttendance(studentId: number) {
     const supabase = await createAdminClient();
     const today = new Date().toISOString().split('T')[0];
 
-    // Check if they already marked it today
     const { data: existing } = await supabase
         .from('attendance')
         .select('id')
@@ -15,11 +14,9 @@ export async function markAttendance(studentId: number) {
         .eq('attendance_date', today)
         .single();
 
-    if (existing) {
-        return { error: 'Attendance already marked for today.' };
-    }
+    if (existing) return { error: 'Attendance already marked for today.' };
 
-    // Insert the new attendance record
+    // 1. Insert Attendance
     const { error } = await supabase.from('attendance').insert({
         student_id: studentId,
         attendance_date: today,
@@ -28,7 +25,12 @@ export async function markAttendance(studentId: number) {
 
     if (error) return { error: error.message };
 
-    // Refresh both student and admin dashboards
+    // 2. Instantly grant internet access to all devices owned by this student
+    await supabase
+        .from('devices')
+        .update({ status: 'bypassed' })
+        .eq('student_id', studentId);
+
     revalidatePath('/dashboard');
     revalidatePath('/admin');
 

@@ -1,127 +1,91 @@
 'use client';
 
-import { useState } from 'react';
-import { Lock, Mail, Server, ArrowRight, Loader2, ShieldAlert, GraduationCap, X } from 'lucide-react';
+import React, { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Loader2, ShieldCheck, Wifi, Mail, Lock, Router } from 'lucide-react';
 import { loginAction } from '@/app/actions/auth';
 
-type LoginRole = 'student' | 'admin' | null;
-
 export default function LoginPage() {
-    const [activeModal, setActiveModal] = useState<LoginRole>(null);
+    return (
+        <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 font-sans text-slate-50 relative overflow-hidden">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
+            <Suspense fallback={<Loader2 className="w-8 h-8 animate-spin text-emerald-500" />}>
+                <LoginForm />
+            </Suspense>
+        </div>
+    );
+}
+
+function LoginForm() {
+    const searchParams = useSearchParams();
+
+    // Grab MAC and IP from MikroTik redirect URL
+    const mac = searchParams.get('mac') || '';
+    const ip = searchParams.get('ip') || '';
+
     const [loading, setLoading] = useState(false);
-    const [errorMsg, setErrorMsg] = useState('');
-
-    const handleOpenModal = (role: LoginRole) => {
-        setActiveModal(role);
-        setErrorMsg('');
-    };
-
-    const handleCloseModal = () => {
-        if (loading) return;
-        setActiveModal(null);
-    };
+    const [error, setError] = useState('');
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        setLoading(true);
-        setErrorMsg('');
+        setLoading(true); setError('');
 
         const formData = new FormData(e.currentTarget);
+        const res = await loginAction(formData);
 
-        // Execute the backend Server Action
-        const result = await loginAction(formData, activeModal!);
-
-        // If it succeeds, the Server Action redirects automatically. 
-        // If it fails, we catch the error here and unlock the UI.
-        if (result?.error) {
-            setErrorMsg(result.error);
+        if (res?.error) {
+            setError(res.error);
             setLoading(false);
         }
     };
 
     return (
-        <main className="min-h-screen flex flex-col items-center justify-center bg-zinc-950 p-6 relative overflow-hidden">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-sky-900/10 blur-[120px] rounded-full pointer-events-none" />
-
-            <div className="w-full max-w-2xl relative z-10 flex flex-col space-y-10">
-                <div className="flex flex-col items-center space-y-4">
-                    <div className="w-12 h-12 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-center shadow-lg">
-                        <Server className="w-6 h-6 text-sky-500" />
-                    </div>
-                    <div className="text-center">
-                        <h1 className="text-3xl font-bold text-slate-50 tracking-tight">Libernet OS</h1>
-                        <p className="text-zinc-400 text-sm mt-1 font-medium">Select your authentication tier to continue</p>
-                    </div>
+        <div className="w-full max-w-md bg-zinc-900/60 border border-zinc-800/80 rounded-3xl shadow-2xl p-8 backdrop-blur-xl z-10 animate-in fade-in zoom-in-95 duration-500">
+            <div className="flex flex-col items-center text-center mb-8">
+                <div className="w-16 h-16 bg-zinc-950 border border-zinc-800 rounded-2xl flex items-center justify-center mb-4 shadow-inner">
+                    <Wifi className="w-8 h-8 text-emerald-400" />
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <button onClick={() => handleOpenModal('student')} className="group flex flex-col items-start text-left p-6 bg-zinc-900/40 border border-zinc-800 rounded-2xl hover:bg-zinc-800/60 hover:border-sky-500/30 transition-all backdrop-blur-md">
-                        <div className="p-3 bg-zinc-800/50 rounded-lg group-hover:bg-sky-500/10 transition-colors mb-4">
-                            <GraduationCap className="w-6 h-6 text-sky-400" />
-                        </div>
-                        <h2 className="text-lg font-semibold text-slate-200">Student Access</h2>
-                        <p className="text-xs text-zinc-500 mt-1 leading-relaxed">Log in to view your attendance history and active device bindings.</p>
-                    </button>
-
-                    <button onClick={() => handleOpenModal('admin')} className="group flex flex-col items-start text-left p-6 bg-zinc-900/40 border border-zinc-800 rounded-2xl hover:bg-zinc-800/60 hover:border-emerald-500/30 transition-all backdrop-blur-md">
-                        <div className="p-3 bg-zinc-800/50 rounded-lg group-hover:bg-emerald-500/10 transition-colors mb-4">
-                            <ShieldAlert className="w-6 h-6 text-emerald-400" />
-                        </div>
-                        <h2 className="text-lg font-semibold text-slate-200">System Admin</h2>
-                        <p className="text-xs text-zinc-500 mt-1 leading-relaxed">Privileged access to hardware telemetry and network overrides.</p>
-                    </button>
-                </div>
+                <h1 className="text-2xl font-bold tracking-tight text-white">Library Network</h1>
+                <p className="text-sm text-zinc-400 mt-2">Authenticate to access high-speed internet.</p>
             </div>
 
-            {activeModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleCloseModal} />
-                    <div className="relative w-full max-w-md bg-zinc-900 border border-zinc-700 rounded-2xl p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-
-                        <button onClick={handleCloseModal} disabled={loading} className="absolute top-4 right-4 p-1.5 text-zinc-400 hover:text-slate-200 hover:bg-zinc-800 rounded-md transition-colors">
-                            <X className="w-5 h-5" />
-                        </button>
-
-                        <div className="mb-6">
-                            <h2 className="text-xl font-bold text-slate-50 flex items-center">
-                                {activeModal === 'admin' ? <><ShieldAlert className="w-5 h-5 text-emerald-500 mr-2" /> Admin Portal</> : <><GraduationCap className="w-5 h-5 text-sky-500 mr-2" /> Student Login</>}
-                            </h2>
-                        </div>
-
-                        <form onSubmit={handleSubmit} className="flex flex-col space-y-5">
-                            <div className="flex flex-col space-y-1.5">
-                                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Email Address</label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Mail className="h-5 w-5 text-zinc-500" />
-                                    </div>
-                                    <input type="text" name="email" className="w-full bg-black/40 border border-zinc-800 text-slate-200 text-sm rounded-lg pl-10 pr-4 py-3 focus:outline-none focus:border-sky-500/50 transition-colors" placeholder={activeModal === 'admin' ? "sysadmin@libernet.local" : "student@example.com"} required />
-                                </div>
-                            </div>
-
-                            <div className="flex flex-col space-y-1.5">
-                                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Password</label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Lock className="h-5 w-5 text-zinc-500" />
-                                    </div>
-                                    <input type="password" name="password" className="w-full bg-black/40 border border-zinc-800 text-slate-200 text-sm rounded-lg pl-10 pr-4 py-3 focus:outline-none focus:border-sky-500/50 transition-colors" placeholder="••••••••••••" required />
-                                </div>
-                            </div>
-
-                            {errorMsg && (
-                                <div className="p-3 bg-amber-950/30 border border-amber-900/50 rounded-lg">
-                                    <span className="text-xs font-medium text-amber-500">{errorMsg}</span>
-                                </div>
-                            )}
-
-                            <button type="submit" disabled={loading} className={`w-full text-white text-sm font-medium rounded-lg py-3 px-4 flex items-center justify-center transition-all ${activeModal === 'admin' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-sky-600 hover:bg-sky-500'}`}>
-                                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Authenticate Session <ArrowRight className="w-4 h-4 ml-2" /></>}
-                            </button>
-                        </form>
+            {mac && (
+                <div className="mb-6 p-3 bg-sky-500/10 border border-sky-500/20 rounded-xl flex items-center text-sky-400 text-xs">
+                    <Router className="w-4 h-4 mr-3 shrink-0" />
+                    <div>
+                        <p className="font-semibold uppercase tracking-wider text-[10px]">Hardware Sync Active</p>
+                        <p className="font-mono mt-0.5">Device: {mac}</p>
                     </div>
                 </div>
             )}
-        </main>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+                {/* THESE HIDDEN INPUTS SEND THE HARDWARE DATA TO VERCEL */}
+                <input type="hidden" name="macAddress" value={mac} />
+                <input type="hidden" name="ipAddress" value={ip} />
+
+                <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider pl-1">Email Address</label>
+                    <div className="relative">
+                        <Mail className="w-5 h-5 absolute left-3 top-3 text-zinc-500" />
+                        <input required type="email" name="email" placeholder="student@example.com" className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                    </div>
+                </div>
+
+                <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider pl-1">Password</label>
+                    <div className="relative">
+                        <Lock className="w-5 h-5 absolute left-3 top-3 text-zinc-500" />
+                        <input required type="password" name="password" placeholder="••••••••" className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                    </div>
+                </div>
+
+                {error && <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium text-center">{error}</div>}
+
+                <button disabled={loading} type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center mt-2 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><ShieldCheck className="w-5 h-5 mr-2" /> Secure Login</>}
+                </button>
+            </form>
+        </div>
     );
 }
