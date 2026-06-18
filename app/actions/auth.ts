@@ -17,13 +17,16 @@ export async function loginAction(formData: FormData) {
 
     const user = data.user;
     const role = user.user_metadata?.role || 'student';
+    if ((!macAddress || macAddress.length < 5) && role !== 'admin') {
+        // Force sign out immediately to destroy their session token
+        await supabase.auth.signOut();
+        return { error: 'Network Security: You must be connected to the Library Wi-Fi to log in.' };
+    }
 
-    // 2. The "Messenger" Logic (Hardware Sync)
-    // Only execute if the MikroTik router successfully passed a MAC address
+    // 2. Hardware Sync & Security
     if (macAddress && macAddress.length > 5) {
         let studentId = null;
 
-        // Get internal Student ID for linking
         if (role !== 'admin') {
             const { data: student } = await supabase
                 .from('students')
@@ -31,12 +34,36 @@ export async function loginAction(formData: FormData) {
                 .eq('email', email)
                 .single();
 
-            if (student) studentId = student.id;
+            if (student) {
+                studentId = student.id;
+
+                // ==========================================
+                // SECURITY: HARDWARE BINDING (1 Device Per Student)
+                // ==========================================
+                const { data: registeredDevices } = await supabase
+                    .from('devices')
+                    .select('mac_address')
+                    .eq('student_id', studentId);
+
+                // If the student already has devices linked to their account...
+                if (registeredDevices && registeredDevices.length > 0) {
+
+                    // Check if the MAC they are using right now matches their linked device
+                    const isRecognized = registeredDevices.some(
+                        d => d.mac_address.toUpperCase() === macAddress.toUpperCase()
+                    );
+
+                    // If it's a completely different device, BLOCK THE LOGIN
+                    if (!isRecognized) {
+                        // Force logout so they don't even get a valid session token
+                        await supabase.auth.signOut();
+                        return { error: 'Device Limit Reached: Your account is permanently locked to another device. See Admin to reset.' };
+                    }
+                }
+            }
         }
 
-        // Insert the device into the database.
-        // If student: Set to 'pending' (Triggers Library PC to evaluate them)
-        // If admin: Set to 'bypassed' (Triggers Library PC to grant instant access)
+        // 3. Register the device (If it's their first time logging in, it locks this MAC to them)
         await supabase.from('devices').upsert({
             mac_address: macAddress,
             ip_address: ipAddress || '0.0.0.0',
@@ -47,7 +74,7 @@ export async function loginAction(formData: FormData) {
         }, { onConflict: 'mac_address' });
     }
 
-    // 3. Route to the correct dashboard
+    // 4. Route to the correct dashboard
     if (role === 'admin') redirect('/admin');
     else redirect('/dashboard');
 }
