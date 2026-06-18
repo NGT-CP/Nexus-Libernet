@@ -7,6 +7,7 @@ export async function markAttendance(studentId: number) {
     const supabase = await createAdminClient();
     const today = new Date().toISOString().split('T')[0];
 
+    // 1. Check if already marked
     const { data: existing } = await supabase
         .from('attendance')
         .select('id')
@@ -16,7 +17,7 @@ export async function markAttendance(studentId: number) {
 
     if (existing) return { error: 'Attendance already marked for today.' };
 
-    // 1. Insert Attendance
+    // 2. Insert Attendance Record
     const { error } = await supabase.from('attendance').insert({
         student_id: studentId,
         attendance_date: today,
@@ -25,12 +26,15 @@ export async function markAttendance(studentId: number) {
 
     if (error) return { error: error.message };
 
-    // 2. Instantly grant internet access to all devices owned by this student
+    // 3. TRIGGER THE STATE MACHINE (Library PC)
+    // By updating the status to 'pending', the Library PC will catch the 
+    // WebSocket event, see that attendance is now true, and grant internet access!
     await supabase
         .from('devices')
-        .update({ status: 'bypassed' })
+        .update({ status: 'pending' })
         .eq('student_id', studentId);
 
+    // Refresh the UI
     revalidatePath('/dashboard');
     revalidatePath('/admin');
 
