@@ -11,59 +11,47 @@ export async function loginAction(formData: FormData) {
     const macAddress = formData.get('macAddress') as string;
     const ipAddress = formData.get('ipAddress') as string;
 
-    // 1. Authenticate the user's password
+    // 1. Authenticate the user's password first
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
 
     const user = data.user;
     const role = user.user_metadata?.role || 'student';
+
+    // ==========================================
+    // SMART WI-FI LOCKOUT
+    // ==========================================
+    // If no MAC is present AND the user is not an Admin, kick them out.
     if ((!macAddress || macAddress.length < 5) && role !== 'admin') {
-        // Force sign out immediately to destroy their session token
         await supabase.auth.signOut();
-        return { error: 'Network Security: You must be connected to the Library Wi-Fi to log in.' };
+        return { error: 'Access Denied: You must be connected to the Library Wi-Fi to log in.' };
     }
 
-    // 2. Hardware Sync & Security
+    // 2. Hardware Sync & Security (Only runs if a MAC is present)
     if (macAddress && macAddress.length > 5) {
         let studentId = null;
 
         if (role !== 'admin') {
-            const { data: student } = await supabase
-                .from('students')
-                .select('id')
-                .eq('email', email)
-                .single();
+            const { data: student } = await supabase.from('students').select('id').eq('email', email).single();
 
             if (student) {
                 studentId = student.id;
 
-                // ==========================================
-                // SECURITY: HARDWARE BINDING (1 Device Per Student)
-                // ==========================================
-                const { data: registeredDevices } = await supabase
-                    .from('devices')
-                    .select('mac_address')
-                    .eq('student_id', studentId);
+                // HARDWARE BINDING (1 Device Per Student)
+                const { data: registeredDevices } = await supabase.from('devices').select('mac_address').eq('student_id', studentId);
 
-                // If the student already has devices linked to their account...
                 if (registeredDevices && registeredDevices.length > 0) {
+                    const isRecognized = registeredDevices.some(d => d.mac_address.toUpperCase() === macAddress.toUpperCase());
 
-                    // Check if the MAC they are using right now matches their linked device
-                    const isRecognized = registeredDevices.some(
-                        d => d.mac_address.toUpperCase() === macAddress.toUpperCase()
-                    );
-
-                    // If it's a completely different device, BLOCK THE LOGIN
                     if (!isRecognized) {
-                        // Force logout so they don't even get a valid session token
                         await supabase.auth.signOut();
-                        return { error: 'Device Limit Reached: Your account is permanently locked to another device. See Admin to reset.' };
+                        return { error: 'Device Limit Reached: Your account is permanently locked to another device.' };
                     }
                 }
             }
         }
 
-        // 3. Register the device (If it's their first time logging in, it locks this MAC to them)
+        // Register/Update the device
         await supabase.from('devices').upsert({
             mac_address: macAddress,
             ip_address: ipAddress || '0.0.0.0',
@@ -74,7 +62,7 @@ export async function loginAction(formData: FormData) {
         }, { onConflict: 'mac_address' });
     }
 
-    // 4. Route to the correct dashboard
+    // 3. Route to the correct dashboard
     if (role === 'admin') redirect('/admin');
     else redirect('/dashboard');
 }
