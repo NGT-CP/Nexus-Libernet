@@ -11,23 +11,17 @@ export async function loginAction(formData: FormData) {
     const macAddress = formData.get('macAddress') as string;
     const ipAddress = formData.get('ipAddress') as string;
 
-    // 1. Authenticate the user's password first
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
 
     const user = data.user;
     const role = user.user_metadata?.role || 'student';
 
-    // ==========================================
-    // SMART WI-FI LOCKOUT
-    // ==========================================
-    // If no MAC is present AND the user is not an Admin, kick them out.
     if ((!macAddress || macAddress.length < 5) && role !== 'admin') {
         await supabase.auth.signOut();
         return { error: 'Access Denied: You must be connected to the Library Wi-Fi to log in.' };
     }
 
-    // 2. Hardware Sync & Security (Only runs if a MAC is present)
     if (macAddress && macAddress.length > 5) {
         let studentId = null;
 
@@ -37,7 +31,6 @@ export async function loginAction(formData: FormData) {
             if (student) {
                 studentId = student.id;
 
-                // HARDWARE BINDING (1 Device Per Student)
                 const { data: registeredDevices } = await supabase.from('devices').select('mac_address').eq('student_id', studentId);
 
                 if (registeredDevices && registeredDevices.length > 0) {
@@ -45,13 +38,14 @@ export async function loginAction(formData: FormData) {
 
                     if (!isRecognized) {
                         await supabase.auth.signOut();
-                        return { error: 'Device Limit Reached: Your account is permanently locked to another device.' };
+                        return { error: 'Device Limit Reached: Your account is locked to another device.' };
                     }
                 }
             }
         }
 
-        // Register/Update the device
+        // ADMIN DIRECT BYPASS: Role 'admin' is instantly inserted as 'bypassed' 
+        // triggering the Enforcer's Instant Net feature immediately.
         await supabase.from('devices').upsert({
             mac_address: macAddress,
             ip_address: ipAddress || '0.0.0.0',
@@ -62,7 +56,6 @@ export async function loginAction(formData: FormData) {
         }, { onConflict: 'mac_address' });
     }
 
-    // 3. Route to the correct dashboard
     if (role === 'admin') redirect('/admin');
     else redirect('/dashboard');
 }
