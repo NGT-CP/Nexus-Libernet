@@ -2,7 +2,7 @@
 
 import React, { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Loader2, ShieldCheck, Wifi, Mail, Lock, Router, WifiOff, ExternalLink } from 'lucide-react';
+import { Loader2, ShieldCheck, Wifi, Mail, Lock, Router, AlertTriangle, ExternalLink, X } from 'lucide-react';
 import { loginAction } from '@/app/actions/auth';
 
 export default function LoginPage() {
@@ -22,11 +22,11 @@ function LoginForm() {
 
     const mac = searchParams.get('mac') || '';
     const ip = searchParams.get('ip') || '';
-
     const isAdminBypass = searchParams.get('admin') === 'true';
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [dismissWarning, setDismissWarning] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -42,106 +42,104 @@ function LoginForm() {
         }
     };
 
-    // ==========================================
-    // THE WI-FI TRAP ESCAPE HATCH
-    // ==========================================
-    if (!mac && !isAdminBypass) {
-        return (
-            <div className="w-full max-w-md bg-zinc-900/60 border border-rose-500/30 rounded-3xl shadow-2xl p-8 backdrop-blur-xl z-10 text-center animate-in zoom-in-95 duration-500">
-                <div className="w-16 h-16 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <WifiOff className="w-8 h-8 text-rose-500" />
-                </div>
-                <h1 className="text-2xl font-bold tracking-tight text-white">Network Sync Required</h1>
-                <p className="text-sm text-zinc-400 mt-3 leading-relaxed">
-                    Your device is connected to the Wi-Fi, but the router hasn't verified your hardware yet.
-                </p>
-
-                {/* THE MAGIC BUTTON: Forces the router to intercept and inject the MAC */}
-                <a
-                    href="http://192.168.88.1/login"
-                    className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center mt-6 shadow-[0_0_20px_rgba(2,132,199,0.2)] transition-all"
-                >
-                    <ExternalLink className="w-5 h-5 mr-2" />
-                    Force Router Sync
-                </a>
-
-                <p className="text-xs text-zinc-500 mt-6 pt-6 border-t border-zinc-800/80">
-                    If the button does not work, disconnect from the Wi-Fi and reconnect.
-                </p>
-            </div>
-        );
-    }
-
-    // ==========================================
-    // THE STANDARD LOGIN FORM
-    // ==========================================
     return (
-        <div className="w-full max-w-md bg-zinc-900/60 border border-zinc-800/80 rounded-3xl shadow-2xl p-8 backdrop-blur-xl z-10 animate-in fade-in zoom-in-95 duration-500">
-
-            <div className="flex flex-col items-center text-center mb-8">
-                <div className="w-16 h-16 bg-zinc-950 border border-zinc-800 rounded-2xl flex items-center justify-center mb-4 shadow-inner">
-                    <Wifi className="w-8 h-8 text-emerald-400" />
-                </div>
-                <h1 className="text-2xl font-bold tracking-tight text-white">Library Network</h1>
-                <p className="text-sm text-zinc-400 mt-2">Authenticate to access high-speed internet.</p>
-            </div>
-
-            {mac && (
-                <div className="mb-6 p-3 bg-sky-500/10 border border-sky-500/20 rounded-xl flex items-center text-sky-400 text-xs">
-                    <Router className="w-4 h-4 mr-3 shrink-0" />
-                    <div>
-                        <p className="font-semibold uppercase tracking-wider text-[10px]">Hardware Sync Active</p>
-                        <p className="font-mono mt-0.5">Device: {mac}</p>
+        <>
+            {/* THE DISMISSIBLE WARNING BANNER (Replaces the hard lockout screen) */}
+            {!mac && !isAdminBypass && !dismissWarning && (
+                <div className="absolute top-4 left-4 right-4 md:left-auto md:right-auto md:w-[450px] z-50 bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 backdrop-blur-xl shadow-2xl animate-in slide-in-from-top-4 duration-500 flex flex-col">
+                    <div className="flex items-start justify-between">
+                        <div className="flex items-center text-rose-500">
+                            <AlertTriangle className="w-5 h-5 mr-2 shrink-0" />
+                            <h2 className="font-bold text-sm">Network Sync Required</h2>
+                        </div>
+                        <button
+                            onClick={() => setDismissWarning(true)}
+                            className="text-zinc-400 hover:text-white transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
                     </div>
+                    <p className="text-xs text-zinc-300 mt-2 leading-relaxed">
+                        Your hardware isn't synced with the router. Login may fail.
+                    </p>
+                    <a
+                        href="http://192.168.88.1/login"
+                        className="mt-3 w-full bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/50 text-rose-100 text-xs font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-all"
+                    >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Force Router Sync
+                    </a>
                 </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-                <input type="hidden" name="macAddress" value={mac} />
-                <input type="hidden" name="ipAddress" value={ip} />
+            {/* THE STANDARD LOGIN FORM (Always visible now) */}
+            <div className="w-full max-w-md bg-zinc-900/60 border border-zinc-800/80 rounded-3xl shadow-2xl p-8 backdrop-blur-xl z-10">
 
-                <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider pl-1">Email Address</label>
-                    <div className="relative">
-                        <Mail className="w-5 h-5 absolute left-3 top-3 text-zinc-500" />
-                        <input
-                            required
-                            type="email"
-                            name="email"
-                            placeholder="student@example.com"
-                            className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
-                        />
+                <div className="flex flex-col items-center text-center mb-8">
+                    <div className="w-16 h-16 bg-zinc-950 border border-zinc-800 rounded-2xl flex items-center justify-center mb-4 shadow-inner">
+                        <Wifi className="w-8 h-8 text-emerald-400" />
                     </div>
+                    <h1 className="text-2xl font-bold tracking-tight text-white">Library Network</h1>
+                    <p className="text-sm text-zinc-400 mt-2">Authenticate to access high-speed internet.</p>
                 </div>
 
-                <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider pl-1">Password</label>
-                    <div className="relative">
-                        <Lock className="w-5 h-5 absolute left-3 top-3 text-zinc-500" />
-                        <input
-                            required
-                            type="password"
-                            name="password"
-                            placeholder="••••••••"
-                            className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
-                        />
-                    </div>
-                </div>
-
-                {error && (
-                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium text-center">
-                        {error}
+                {mac && (
+                    <div className="mb-6 p-3 bg-sky-500/10 border border-sky-500/20 rounded-xl flex items-center text-sky-400 text-xs">
+                        <Router className="w-4 h-4 mr-3 shrink-0" />
+                        <div>
+                            <p className="font-semibold uppercase tracking-wider text-[10px]">Hardware Sync Active</p>
+                            <p className="font-mono mt-0.5">Device: {mac}</p>
+                        </div>
                     </div>
                 )}
 
-                <button
-                    disabled={loading}
-                    type="submit"
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center mt-2 shadow-[0_0_20px_rgba(16,185,129,0.2)] transition-all"
-                >
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><ShieldCheck className="w-5 h-5 mr-2" /> Secure Login</>}
-                </button>
-            </form>
-        </div>
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <input type="hidden" name="macAddress" value={mac} />
+                    <input type="hidden" name="ipAddress" value={ip} />
+
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider pl-1">Email Address</label>
+                        <div className="relative">
+                            <Mail className="w-5 h-5 absolute left-3 top-3 text-zinc-500" />
+                            <input
+                                required
+                                type="email"
+                                name="email"
+                                placeholder="student@example.com"
+                                className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider pl-1">Password</label>
+                        <div className="relative">
+                            <Lock className="w-5 h-5 absolute left-3 top-3 text-zinc-500" />
+                            <input
+                                required
+                                type="password"
+                                name="password"
+                                placeholder="••••••••"
+                                className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
+                            />
+                        </div>
+                    </div>
+
+                    {error && (
+                        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium text-center">
+                            {error}
+                        </div>
+                    )}
+
+                    <button
+                        disabled={loading}
+                        type="submit"
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center mt-2 shadow-[0_0_20px_rgba(16,185,129,0.2)] transition-all"
+                    >
+                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><ShieldCheck className="w-5 h-5 mr-2" /> Secure Login</>}
+                    </button>
+                </form>
+            </div>
+        </>
     );
 }
