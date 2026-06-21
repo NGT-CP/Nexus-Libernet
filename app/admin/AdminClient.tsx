@@ -3,7 +3,7 @@
 import React, { useState, Fragment } from 'react';
 import {
     ShieldAlert, LogOut, Activity, Users, Network, Router,
-    Download, Upload, Plus, Edit, Settings2, UserCog, X, ChevronDown, Save, Loader2, UserPlus, CheckCircle2
+    Download, Upload, Plus, Edit, Settings2, UserCog, X, ChevronDown, Save, Loader2, UserPlus, CheckCircle2, Smartphone
 } from 'lucide-react';
 import { logoutAction } from '@/app/actions/auth';
 import { updateAdminProfile, updateDeviceSpeedLimit } from '@/app/actions/admin';
@@ -215,18 +215,39 @@ export default function AdminDashboardClient({
                                             {initialUsers.map((u) => (
                                                 <tr key={u.id} className="hover:bg-zinc-800/20 transition-colors">
                                                     <td className="px-4 py-3"><div className="font-medium text-slate-200">{u.name}</div><div className="text-xs text-zinc-500 font-mono">{u.id}</div></td>
+
+                                                    {/* THE UPGRADED DEVICE & ONLINE BADGE CELL */}
                                                     <td className="px-4 py-3">
-                                                        <div className="flex flex-col space-y-1.5">
-                                                            {u.devices.map((device: any, idx: number) => (
-                                                                <div key={idx} className="flex items-center space-x-2">
-                                                                    <div className={`w-1.5 h-1.5 rounded-full ${device.status === 'online' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-zinc-700'}`} />
-                                                                    <span className={`text-xs ${device.status === 'online' ? 'text-slate-300' : 'text-zinc-500'}`}>{device.hostname}</span>
-                                                                    <span className={`text-[10px] uppercase font-bold tracking-wider ${device.status === 'online' ? 'text-emerald-500/80' : 'text-zinc-600'}`}>{device.status}</span>
-                                                                </div>
-                                                            ))}
-                                                            {u.devices.length === 0 && <span className="text-xs text-zinc-600 italic">No devices</span>}
-                                                        </div>
+                                                        {u.devices.length > 0 ? (
+                                                            <div className="flex flex-col space-y-2">
+                                                                {u.devices.map((device: any, idx: number) => (
+                                                                    <div key={idx} className="flex items-center gap-3">
+                                                                        {/* Device Name Badge */}
+                                                                        <div className="flex items-center text-xs text-zinc-400 bg-zinc-950 px-2 py-1.5 rounded-md border border-zinc-800/80 shadow-inner">
+                                                                            <Smartphone className="w-3.5 h-3.5 mr-1.5 text-sky-400" />
+                                                                            <span className="font-mono truncate max-w-[140px]">{device.hostname}</span>
+                                                                        </div>
+
+                                                                        {/* Accurate DB-Driven Online Status Badge */}
+                                                                        {u.is_online ? (
+                                                                            <div className="flex items-center px-2 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-md">
+                                                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1.5" />
+                                                                                <span className="text-[10px] font-bold text-emerald-400 tracking-wider">ONLINE</span>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="flex items-center px-2 py-1 bg-zinc-800/50 border border-zinc-700/50 rounded-md">
+                                                                                <div className="w-1.5 h-1.5 rounded-full bg-zinc-600 mr-1.5" />
+                                                                                <span className="text-[10px] font-bold text-zinc-500 tracking-wider">OFFLINE</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-zinc-600 italic">No devices linked</span>
+                                                        )}
                                                     </td>
+
                                                     <td className="px-4 py-3">
                                                         {u.sub_start === 'None' ? (<span className="text-zinc-500 italic text-xs">No Active Sub</span>) : (
                                                             <div className="text-xs"><div className="text-zinc-300">Start: {u.sub_start}</div><div className="text-zinc-500">End: {u.sub_end}</div></div>
