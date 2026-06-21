@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, Fragment } from 'react';
+import React, { useState, useEffect, Fragment } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import {
     ShieldAlert, LogOut, Activity, Users, Network, Router,
     Download, Upload, Plus, Edit, Settings2, UserCog, X, ChevronDown, Save, Loader2, UserPlus, CheckCircle2, Smartphone
@@ -17,6 +18,44 @@ export default function AdminDashboardClient({
     adminUser: any; initialDevices: any[]; initialUsers: any[]; graphData: any[];
 }) {
     const router = useRouter();
+
+    // ==========================================
+    // REAL-TIME WEBSOCKET SYNC ENGINE
+    // ==========================================
+    useEffect(() => {
+        // Using NEXT_PUBLIC variables allows the browser to connect to the WebSocket securely
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+        if (!supabaseUrl || !supabaseKey) {
+            console.warn("⚠️ Missing NEXT_PUBLIC_SUPABASE environment variables for real-time sync.");
+            return;
+        }
+
+        const supabase = createClient(supabaseUrl, supabaseKey);
+
+        console.log("📡 [WEBSOCKET] Admin UI listening for live database changes...");
+
+        const channel = supabase.channel('admin-ui-sync')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, (payload) => {
+                console.log('🔄 [REALTIME] Device hardware state changed. Refreshing UI silently...', payload);
+                router.refresh(); // Silently fetches fresh server data without reloading the page
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, (payload) => {
+                console.log('🔄 [REALTIME] Student profile state changed. Refreshing UI silently...', payload);
+                router.refresh();
+            })
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log("✅ [WEBSOCKET] Live sync connected perfectly.");
+                }
+            });
+
+        // Cleanup listener when component unmounts
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [router]);
 
     const [activeTab, setActiveTab] = useState('overview');
     const [isProfileOpen, setIsProfileOpen] = useState(false);
