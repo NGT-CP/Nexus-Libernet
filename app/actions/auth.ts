@@ -3,14 +3,6 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 
-// FIX: previously this was hard-locked to exactly 1 device forever —
-// the first MAC a student ever logged in with became permanent, and
-// any second device (laptop after phone, etc) was rejected with
-// "Device Limit Reached" with no way to add more short of an admin
-// manually deleting rows in the devices table. The Admin UI's user
-// table already displays "Devices: 1 active / 2 offline" implying
-// multi-device support was intended. This makes the limit explicit
-// and configurable instead of accidentally being 1.
 const MAX_DEVICES_PER_STUDENT = 2;
 
 export async function loginAction(formData: FormData) {
@@ -27,61 +19,76 @@ export async function loginAction(formData: FormData) {
     const user = data.user;
     const role = user.user_metadata?.role || 'student';
 
-    if ((!macAddress || macAddress.length < 5) && role !== 'admin') {
+    // ==========================================
+    // 1. ADMIN FLOW (Instant Bypass)
+    // ==========================================
+    if (role === 'admin') {
+        // If the admin is physically connected to the library WiFi, bypass their MAC instantly.
+        if (macAddress && macAddress.length > 5) {
+            await supabase.from('devices').upsert({
+                mac_address: macAddress.toUpperCase(),
+                ip_address: ipAddress || '0.0.0.0',
+                student_id: null, // Admins don't need to be linked to a student profile
+                status: 'bypassed',
+                device_name: 'Admin Device',
+                speed_limit: '100M/100M'
+            }, { onConflict: 'mac_address' });
+        }
+        // Redirect immediately. If they are at home (no MAC), they still get in safely.
+        redirect('/admin');
+    }
+
+    // ==========================================
+    // 2. STUDENT FLOW (Device Limit Checks)
+    // ==========================================
+    if (!macAddress || macAddress.length < 5) {
         await supabase.auth.signOut();
         return { error: 'Access Denied: You must be connected to the Library Wi-Fi to log in.' };
     }
 
-    if (macAddress && macAddress.length > 5) {
-        let studentId = null;
+    // Find the student profile
+    const { data: student } = await supabase.from('students').select('id').eq('email', email).single();
 
-        if (role !== 'admin') {
-            const { data: student } = await supabase.from('students').select('id').eq('email', email).single();
-
-            if (student) {
-                studentId = student.id;
-
-                const { data: registeredDevices } = await supabase
-                    .from('devices')
-                    .select('mac_address')
-                    .eq('student_id', studentId);
-
-                if (registeredDevices && registeredDevices.length > 0) {
-                    const isRecognized = registeredDevices.some(
-                        d => d.mac_address.toUpperCase() === macAddress.toUpperCase()
-                    );
-
-                    // FIX: only reject if this is a genuinely NEW device AND
-                    // they've already hit the configured limit. Previously
-                    // any unrecognized MAC was rejected unconditionally once
-                    // ANY device existed, effectively capping it at 1 forever.
-                    if (!isRecognized && registeredDevices.length >= MAX_DEVICES_PER_STUDENT) {
-                        await supabase.auth.signOut();
-                        return {
-                            error: `Device Limit Reached: You can register up to ${MAX_DEVICES_PER_STUDENT} devices. Ask an admin to remove an old device first.`
-                        };
-                    }
-                    // else: either it's a recognized device, or they're still
-                    // under the limit — fall through and let the upsert below
-                    // register this as an additional device.
-                }
-            }
-        }
-
-        // ADMIN DIRECT BYPASS: Role 'admin' is instantly inserted as 'bypassed'
-        // triggering the Enforcer's Instant Net feature immediately.
-        await supabase.from('devices').upsert({
-            mac_address: macAddress,
-            ip_address: ipAddress || '0.0.0.0',
-            student_id: studentId,
-            status: role === 'admin' ? 'bypassed' : 'pending',
-            device_name: role === 'admin' ? 'Admin Device' : 'Student Device',
-            speed_limit: role === 'admin' ? '100M/100M' : '5M/5M'
-        }, { onConflict: 'mac_address' });
+    if (!student) {
+        await supabase.auth.signOut();
+        return { error: 'No student profile found for this account.' };
     }
 
-    if (role === 'admin') redirect('/admin');
-    else redirect('/dashboard');
+    const studentId = student.id;
+
+    // Fetch all currently registered devices for this student
+    const { data: registeredDevices } = await supabase
+        .from('devices')
+        .select('mac_address')
+        .eq('student_id', studentId);
+
+    if (registeredDevices && registeredDevices.length > 0) {
+        const isRecognized = registeredDevices.some(
+            d => d.mac_address.toUpperCase() === macAddress.toUpperCase()
+        );
+
+        // If it's a brand NEW device, enforce the limit
+        if (!isRecognized && registeredDevices.length >= MAX_DEVICES_PER_STUDENT) {
+            await supabase.auth.signOut();
+            return {
+                error: `Device Limit Reached: You can register up to ${MAX_DEVICES_PER_STUDENT} devices. Ask an admin to remove an old device first.`
+            };
+        }
+    }
+
+    // Upsert the device. Because we use onConflict: 'mac_address', a new phone gets a NEW row, 
+    // while an existing phone just updates its IP address. This fixes the "second device not showing" bug!
+    await supabase.from('devices').upsert({
+        mac_address: macAddress.toUpperCase(),
+        ip_address: ipAddress || '0.0.0.0',
+        student_id: studentId,
+        status: 'pending',
+        device_name: 'Student Device',
+        speed_limit: '5M/5M'
+    }, { onConflict: 'mac_address' });
+
+    // Send students to the dashboard
+    redirect('/dashboard');
 }
 
 export async function logoutAction() {
@@ -90,10 +97,7 @@ export async function logoutAction() {
     redirect('/');
 }
 
-// FIX: gives the admin a way to free up a device slot for a student
-// who's hit MAX_DEVICES_PER_STUDENT, without manually touching SQL.
-// Wire this up to a "Remove device" button in the Admin UI's user
-// device-list cell.
+// Allows admins to easily free up a slot for a student
 export async function removeStudentDevice(macAddress: string) {
     const supabase = await createAdminClient();
     const { error } = await supabase.from('devices').delete().eq('mac_address', macAddress);
