@@ -3,6 +3,16 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 
+// FIX: previously this was hard-locked to exactly 1 device forever —
+// the first MAC a student ever logged in with became permanent, and
+// any second device (laptop after phone, etc) was rejected with
+// "Device Limit Reached" with no way to add more short of an admin
+// manually deleting rows in the devices table. The Admin UI's user
+// table already displays "Devices: 1 active / 2 offline" implying
+// multi-device support was intended. This makes the limit explicit
+// and configurable instead of accidentally being 1.
+const MAX_DEVICES_PER_STUDENT = 2;
+
 export async function loginAction(formData: FormData) {
     const supabase = await createAdminClient();
 
@@ -31,20 +41,34 @@ export async function loginAction(formData: FormData) {
             if (student) {
                 studentId = student.id;
 
-                const { data: registeredDevices } = await supabase.from('devices').select('mac_address').eq('student_id', studentId);
+                const { data: registeredDevices } = await supabase
+                    .from('devices')
+                    .select('mac_address')
+                    .eq('student_id', studentId);
 
                 if (registeredDevices && registeredDevices.length > 0) {
-                    const isRecognized = registeredDevices.some(d => d.mac_address.toUpperCase() === macAddress.toUpperCase());
+                    const isRecognized = registeredDevices.some(
+                        d => d.mac_address.toUpperCase() === macAddress.toUpperCase()
+                    );
 
-                    if (!isRecognized) {
+                    // FIX: only reject if this is a genuinely NEW device AND
+                    // they've already hit the configured limit. Previously
+                    // any unrecognized MAC was rejected unconditionally once
+                    // ANY device existed, effectively capping it at 1 forever.
+                    if (!isRecognized && registeredDevices.length >= MAX_DEVICES_PER_STUDENT) {
                         await supabase.auth.signOut();
-                        return { error: 'Device Limit Reached: Your account is locked to another device.' };
+                        return {
+                            error: `Device Limit Reached: You can register up to ${MAX_DEVICES_PER_STUDENT} devices. Ask an admin to remove an old device first.`
+                        };
                     }
+                    // else: either it's a recognized device, or they're still
+                    // under the limit — fall through and let the upsert below
+                    // register this as an additional device.
                 }
             }
         }
 
-        // ADMIN DIRECT BYPASS: Role 'admin' is instantly inserted as 'bypassed' 
+        // ADMIN DIRECT BYPASS: Role 'admin' is instantly inserted as 'bypassed'
         // triggering the Enforcer's Instant Net feature immediately.
         await supabase.from('devices').upsert({
             mac_address: macAddress,
@@ -64,4 +88,15 @@ export async function logoutAction() {
     const supabase = await createAdminClient();
     await supabase.auth.signOut();
     redirect('/');
+}
+
+// FIX: gives the admin a way to free up a device slot for a student
+// who's hit MAX_DEVICES_PER_STUDENT, without manually touching SQL.
+// Wire this up to a "Remove device" button in the Admin UI's user
+// device-list cell.
+export async function removeStudentDevice(macAddress: string) {
+    const supabase = await createAdminClient();
+    const { error } = await supabase.from('devices').delete().eq('mac_address', macAddress);
+    if (error) return { error: error.message };
+    return { success: true };
 }

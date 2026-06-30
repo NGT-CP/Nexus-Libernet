@@ -33,8 +33,12 @@ export default async function DashboardPage() {
     // Extract dates for the calendar
     const attendanceDates = student.attendance?.map((a: any) => a.attendance_date) || [];
 
-    // Find current active subscription dates
-    const activeSub = student.subscriptions?.find((sub: any) => sub.status === 'ACTIVE');
+    // Find current active subscription — never trust the `status` column alone,
+    // it can go stale if no admin action or cron has run since expiry.
+    const nowIso = new Date().toISOString();
+    const activeSub = student.subscriptions?.find(
+        (sub: any) => sub.status === 'ACTIVE' && sub.expires_at && sub.expires_at > nowIso
+    );
     const subStart = activeSub?.started_at ? activeSub.started_at.split('T')[0] : null;
     const subEnd = activeSub?.expires_at ? activeSub.expires_at.split('T')[0] : null;
 

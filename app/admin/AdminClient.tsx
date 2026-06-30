@@ -402,7 +402,7 @@ export default function AdminDashboardClient({
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-semibold text-zinc-400 uppercase">Password *</label>
-                                    <input required type="text" name="password" className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
+                                    <input required type="password" name="password" className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-semibold text-zinc-400 uppercase">Target Exam</label>
@@ -458,8 +458,8 @@ export default function AdminDashboardClient({
                                     <input required type="email" name="email" defaultValue={editUserModal.email || ''} className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-zinc-400 uppercase">Password *</label>
-                                    <input required type="text" name="password" defaultValue={editUserModal.password || ''} className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
+                                    <label className="text-xs font-semibold text-zinc-400 uppercase">Password (Optional)</label>
+                                    <input type="password" name="password" placeholder="Leave blank to keep current" className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500" />
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-semibold text-zinc-400 uppercase">Target Exam</label>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LogOut, User, CheckCircle2, History, Receipt, Loader2 } from 'lucide-react';
 import { logoutAction } from '@/app/actions/auth';
 import ModernCalendar from '@/components/ModernCalendar';
@@ -14,6 +14,95 @@ export default function DashboardClient({
     const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState({ type: '', text: '' });
+
+    // ==========================================
+    // CLIENT-SIDE SECURITY HOOK
+    // WiFi disconnect + midnight auto-logout, with a grace period
+    // so a brief 2-3s WiFi blip doesn't instantly throw the student
+    // back to the login screen.
+    // ==========================================
+    const GRACE_PERIOD_MS = 5000;
+
+    useEffect(() => {
+        // Tracks the pending "are they really offline" timer so a
+        // quick reconnect can cancel it before logout actually fires.
+        const pendingLogoutRef = { current: null as ReturnType<typeof setTimeout> | null };
+        let isUnmounted = false;
+
+        const forceLogout = async () => {
+            console.log('[SECURITY] Session terminated — clearing credentials.');
+            try {
+                await logoutAction();
+            } catch (e) {
+                // Network may be fully dead by this point — logoutAction's
+                // server round-trip can fail, but the user still needs to
+                // be bounced off the protected page locally.
+                console.warn('[SECURITY] Server unreachable during logout, forcing local redirect.');
+            } finally {
+                if (!isUnmounted) router.push('/');
+            }
+        };
+
+        // ----------------------------------------------------
+        // FEATURE 1: WiFi Disconnect Redirect (with grace period)
+        // ----------------------------------------------------
+        const handleOffline = () => {
+            if (pendingLogoutRef.current) return; // already counting down
+            console.log(`[SECURITY] Network dropped. Waiting ${GRACE_PERIOD_MS / 1000}s before logging out...`);
+            pendingLogoutRef.current = setTimeout(() => {
+                pendingLogoutRef.current = null;
+                forceLogout();
+            }, GRACE_PERIOD_MS);
+        };
+
+        const handleOnline = () => {
+            if (pendingLogoutRef.current) {
+                console.log('[SECURITY] Reconnected within grace period — logout cancelled.');
+                clearTimeout(pendingLogoutRef.current);
+                pendingLogoutRef.current = null;
+            }
+        };
+
+        window.addEventListener('offline', handleOffline);
+        window.addEventListener('online', handleOnline);
+
+        // ----------------------------------------------------
+        // FEATURE 2: Daily Auto-Logout (Midnight Reset)
+        // ----------------------------------------------------
+        const enforceDailySession = () => {
+            const today = new Date().toDateString();
+            const storedSessionDate = localStorage.getItem('libernet_session_date');
+
+            if (storedSessionDate && storedSessionDate !== today) {
+                // New calendar day since they last had this tab open —
+                // the MikroTik side resets at midnight too, so the
+                // browser session should not silently keep working.
+                forceLogout();
+            } else {
+                localStorage.setItem('libernet_session_date', today);
+            }
+        };
+
+        enforceDailySession();
+
+        // Exact ms until 12:00 AM tonight, so an open tab gets kicked
+        // the moment the day rolls over even without a page reload.
+        const now = new Date();
+        const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        const msUntilMidnight = midnight.getTime() - now.getTime();
+
+        const midnightTimer = setTimeout(() => {
+            forceLogout();
+        }, msUntilMidnight);
+
+        return () => {
+            isUnmounted = true;
+            window.removeEventListener('offline', handleOffline);
+            window.removeEventListener('online', handleOnline);
+            if (pendingLogoutRef.current) clearTimeout(pendingLogoutRef.current);
+            clearTimeout(midnightTimer);
+        };
+    }, [router]);
 
     const handleMarkAttendance = async () => {
         setLoading(true); setMsg({ type: '', text: '' });
