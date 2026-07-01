@@ -31,7 +31,8 @@ export async function loginAction(formData: FormData) {
                 student_id: null, // Admins don't need to be linked to a student profile
                 status: 'bypassed',
                 device_name: 'Admin Device',
-                speed_limit: '100M/100M'
+                role: role,
+                speed_limit: role === 'admin' ? '100M/100M' : '7M/7M'
             }, { onConflict: 'mac_address' });
         }
         // Redirect immediately. If they are at home (no MAC), they still get in safely.
@@ -47,7 +48,7 @@ export async function loginAction(formData: FormData) {
     }
 
     // Find the student profile
-    const { data: student } = await supabase.from('students').select('id').eq('email', email).single();
+    const { data: student } = await supabase.from('students').select('id,is_blocked').eq('email', email).single();
 
     if (!student) {
         await supabase.auth.signOut();
@@ -84,7 +85,7 @@ export async function loginAction(formData: FormData) {
         student_id: studentId,
         status: 'pending',
         device_name: 'Student Device',
-        speed_limit: '5M/5M'
+        speed_limit: '7M/7M'
     }, { onConflict: 'mac_address' });
 
     // Send students to the dashboard

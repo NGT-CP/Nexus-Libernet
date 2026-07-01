@@ -13,10 +13,11 @@ export default async function AdminPage({ searchParams }: Props) {
 
   if (!user || user.user_metadata?.role !== 'admin') redirect('/');
 
-  // 1. Fetch Devices
-  const { data: rawDevices } = await supabase.from('devices').select(`mac_address, ip_address, device_name, status, speed_limit, students ( name )`);
+  // 1. Fetch ALL Devices directly (Notice we added 'student_id' so we can link them manually)
+  const { data: rawDevices } = await supabase.from('devices').select(`mac_address, ip_address, device_name, status, speed_limit, student_id, students ( name )`);
+
   const mappedDevices: any[] = (rawDevices as any[])?.map((d) => {
-    const [down, up] = (d.speed_limit || '5M/5M').split('/');
+    const [down, up] = (d.speed_limit || '7M/7M').split('/');
     const studentData = Array.isArray(d.students) ? d.students[0] : d.students;
     return {
       mac: d.mac_address,
@@ -24,21 +25,26 @@ export default async function AdminPage({ searchParams }: Props) {
       ip: String(d.ip_address || 'N/A'),
       status: d.status || 'pending',
       user: studentData?.name || 'Unassigned',
-      down: down || '5M',
-      up: up || '5M'
+      down: down || '7M',
+      up: up || '7M'
     };
   }) || [];
 
-  // 2. Fetch Users (Added 'is_online' to the query string)
+  // 2. Fetch Users (Removed the nested 'devices' query here)
   const { data: rawStudents } = await supabase.from('students')
-    .select(`id, name, is_online, phone, email, password, target_exam, address, emergency_contact, devices ( device_name, status ), subscriptions ( status, started_at, expires_at ), attendance ( attendance_date )`)
+    .select(`id, name, is_online, phone, email, password, target_exam, address, emergency_contact, subscriptions ( status, started_at, expires_at ), attendance ( attendance_date )`)
     .order('created_at', { ascending: false });
 
+  // 3. Manually map Devices to Students to guarantee multi-device visibility
   const mappedUsers: any[] = (rawStudents as any[])?.map((s) => {
     const subsArray = Array.isArray(s.subscriptions) ? s.subscriptions : [];
     const activeSub = subsArray.find((sub: any) => sub.status === 'ACTIVE');
-    const devicesArray = Array.isArray(s.devices) ? s.devices : [s.devices].filter(Boolean);
-    const formattedDevices = devicesArray.map((d: any) => ({
+
+    // Find ALL devices belonging to this specific student ID from the raw array
+    const studentDevices = (rawDevices as any[])?.filter(d => d.student_id === s.id) || [];
+
+    const formattedDevices = studentDevices.map((d: any) => ({
+      mac: d.mac_address,
       hostname: d.device_name || 'Unknown Hardware',
       status: d.status === 'bypassed' ? 'online' : 'offline'
     }));
@@ -48,8 +54,8 @@ export default async function AdminPage({ searchParams }: Props) {
     return {
       id: `STU-${s.id}`,
       name: s.name,
-      is_online: !!s.is_online, // Passed the real online status from the DB!
-      devices: formattedDevices,
+      is_online: !!s.is_online,
+      devices: formattedDevices, // Both devices will now securely pass to the UI
       active_devices: formattedDevices.filter((d: any) => d.status === 'online').length,
       offline_devices: formattedDevices.filter((d: any) => d.status === 'offline').length,
       sub_start: activeSub?.started_at ? activeSub.started_at.split('T')[0] : 'None',
@@ -59,7 +65,7 @@ export default async function AdminPage({ searchParams }: Props) {
     };
   }) || [];
 
-  // 3. Fetch Graph Data
+  // 4. Fetch Graph Data
   const graphData = await getNetworkGraphData();
 
   return (
